@@ -46,7 +46,6 @@ def init_attention_edit(tokens, tokens_edit, clip_tokenizer, unet, device):
 
 
 def init_attention_func(unet):
-    #ORIGINAL SOURCE CODE: https://github.com/huggingface/diffusers/blob/91ddd2a25b848df0fa1262d4f1cd98c7ccb87750/src/diffusers/models/attention.py#L276
     def new_attention(self, query, key, value):
         # TODO: use baddbmm for better performance
         attention_scores = torch.matmul(query, key.transpose(-1, -2)) * self.scale

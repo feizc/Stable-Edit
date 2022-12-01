@@ -145,16 +145,21 @@ class StableEditPipeline(DiffusionPipeline):
         progress_bar.set_description("Steps")
 
         global_step = 0
+        loss_sum = .0
+        evaluation_time_steps = torch.randint(1000, (1,), device=init_image_latents.device) 
 
         print("First optimizing the text embedding to better reconstruct the init image") 
         for _ in range(text_embedding_optimization_steps):
+            
             # Sample noise that we'll add to the latents
             noise = torch.randn(init_image_latents.shape).to(init_image_latents.device)
-            timesteps = torch.randint(1000, (1,), device=init_image_latents.device)
+            timesteps = torch.randint(1000, (1,), device=init_image_latents.device) 
+
             # Add noise to the latents according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
             noisy_latents = self.scheduler.add_noise(init_image_latents, noise, timesteps)
-            # Predict the noise residual
+            
+            # Predict the noise residual network  
             noise_pred = self.unet(noisy_latents, timesteps, text_embeddings).sample
             loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
 
@@ -165,9 +170,22 @@ class StableEditPipeline(DiffusionPipeline):
 
             progress_bar.update(1)
             global_step += 1 
-            logs = {"loss": loss.detach().item()}
-            progress_bar.set_postfix(**logs)
 
+            loss_sum += loss.detach().item()
+            logs = {"loss": loss_sum / global_step}
+            progress_bar.set_postfix(**logs) 
+
+            if global_step % 500 == 0: 
+                image = self(
+                    text_embeddings=text_embeddings,
+                    generator=generator,
+                ).images[0] 
+                image.save('./tmp/text_inver_' + str(global_step) + '.png')
+                self.text_embedding_evaluate(
+                    text_embeddings=text_embeddings,
+                    init_image_latents=init_image_latents,
+                    evaluation_time_steps=evaluation_time_steps 
+                )
 
         text_embeddings.requires_grad_(False)
         return (text_embeddings, text_embeddings_orig, init_image_latents)
@@ -188,6 +206,9 @@ class StableEditPipeline(DiffusionPipeline):
             lr=diffusion_model_learning_rate,
         )
 
+        loss_sum = .0 
+        evaluation_time_steps = torch.randint(1000, (1,), device=init_image_latents.device) 
+
         progress_bar = tqdm(range(model_fine_tuning_optimization_steps))
         for idx in range(model_fine_tuning_optimization_steps): 
             # Sample noise that we'll add to the latents
@@ -207,19 +228,59 @@ class StableEditPipeline(DiffusionPipeline):
             optimizer.zero_grad() 
 
             progress_bar.update(1)
-
-            logs = {"loss": loss.detach().item()}
+            loss_sum += loss.detach().item()
+            logs = {"loss": loss_sum / (idx + 1)}
             progress_bar.set_postfix(**logs)
 
-            '''
+            
+            # print for immediate reconstructed images 
             if (idx + 1) % 500 == 0:
                 image = self(
                     text_embeddings=text_embeddings,
                     generator=generator,
                 ).images[0] 
-                image.save('./tmp/' + str(idx+1) + '.png')
-            '''
+                image.save('./tmp/model_tune_' + str(idx+1) + '.png') 
+                
+                self.text_embedding_evaluate(
+                    text_embeddings=text_embeddings,
+                    init_image_latents=init_image_latents,
+                    evaluation_time_steps=evaluation_time_steps 
+                )
+
     
+
+
+    # Control the timestep for noise prediction evaluation
+    def text_embedding_evaluate(
+        self,
+        text_embeddings, 
+        init_image_latents,
+        evaluation_time_steps,
+        evaluation_steps = 500,
+    ):
+        loss_sum = .0 
+        with torch.no_grad(): 
+            progress_bar = tqdm(range(evaluation_steps))
+            for idx in range(evaluation_steps): 
+                # Sample noise that we'll add to the latents
+                noise = torch.randn(init_image_latents.shape).to(init_image_latents.device) 
+
+                # Add noise to the latents according to the noise magnitude at each timestep
+                # (this is the forward diffusion process)
+                noisy_latents = self.scheduler.add_noise(init_image_latents, noise, evaluation_time_steps) 
+
+                # Predict the noise residual
+                noise_pred = self.unet(noisy_latents, evaluation_time_steps, text_embeddings).sample
+
+                loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean() 
+
+                progress_bar.update(1)
+                loss_sum += loss.detach().item()
+                logs = {"loss": loss_sum / (idx + 1)}
+                progress_bar.set_postfix(**logs) 
+        
+        print('evaluate text embedding loss: ', loss_sum / evaluation_steps)
+
 
 
     @torch.no_grad()
@@ -344,8 +405,8 @@ class StableEditPipeline(DiffusionPipeline):
         self,
         prompt_emb, 
         prompt_edit_emb,
-        prompt_ids,
-        prompt_edit_ids, 
+        prompt_edit_ids,
+        prompt_ids=None,  
         prompt_edit_token_weights=[], 
         prompt_edit_tokens_start=0.0, 
         prompt_edit_tokens_end=1.0, 
@@ -380,9 +441,10 @@ class StableEditPipeline(DiffusionPipeline):
         #Process clip
         with autocast('cuda'):
             tokens_unconditional = self.tokenizer("", padding="max_length", max_length=self.tokenizer.model_max_length, truncation=True, return_tensors="pt", return_overflowing_tokens=True)
-            embedding_unconditional = prompt_emb # self.text_encoder(tokens_unconditional.input_ids.to(self.device)).last_hidden_state
+            embedding_unconditional = self.text_encoder(tokens_unconditional.input_ids.to(self.device)).last_hidden_state
 
-            tokens_conditional = self.tokenizer(prompt_ids, padding="max_length", max_length=self.tokenizer.model_max_length, truncation=True, return_tensors="pt", return_overflowing_tokens=True)
+            # tokens_conditional = self.tokenizer(prompt_ids, padding="max_length", max_length=self.tokenizer.model_max_length, truncation=True, return_tensors="pt", return_overflowing_tokens=True)
+            # use the learned textual embedding
             embedding_conditional = prompt_emb # self.text_encoder(tokens_conditional.input_ids.to(self.device)).last_hidden_state
 
             #Process prompt editing
@@ -390,7 +452,7 @@ class StableEditPipeline(DiffusionPipeline):
                 tokens_conditional_edit = self.tokenizer(prompt_edit_ids, padding="max_length", max_length=self.tokenizer.model_max_length, truncation=True, return_tensors="pt", return_overflowing_tokens=True)
                 embedding_conditional_edit = prompt_edit_emb #self.text_encoder(tokens_conditional_edit.input_ids.to(self.device)).last_hidden_state
                 
-                init_attention_edit(tokens_conditional, tokens_conditional_edit, self.tokenizer, self.unet, self.device)
+                init_attention_edit(tokens_conditional_edit, tokens_conditional_edit, self.tokenizer, self.unet, self.device)
                 
             init_attention_func(unet=self.unet)
             init_attention_weights(prompt_edit_token_weights, self.tokenizer, self.unet, self.device)
@@ -441,11 +503,6 @@ class StableEditPipeline(DiffusionPipeline):
             latent =  1 / 0.18215 * latent
             image = self.vae.decode(latent.to(self.vae.dtype)).sample
 
-        '''
-        image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).numpy()
-        image = (image[0] * 255).round().astype("uint8")
-        '''
 
         image = (image / 2 + 0.5).clamp(0, 1)
 
@@ -454,6 +511,7 @@ class StableEditPipeline(DiffusionPipeline):
         image = self.numpy_to_pil(image)
 
         return image
+    
 
 
     @torch.no_grad() 
@@ -522,8 +580,7 @@ class StableEditPipeline(DiffusionPipeline):
                     min_error = 1e10
                     lr = refine_strength
 
-                    #Finite difference gradient descent method to correct for classifier free guidance, performs best when CFG is high
-                    #Very slow and unoptimized, might be able to use Newton's method or some other multidimensional root finding method
+                    
                     if i > (steps * refine_skip):
                         for k in range(refine_iterations):
                             #Compute reverse diffusion process to get better prediction for noise at t+1
@@ -556,3 +613,115 @@ class StableEditPipeline(DiffusionPipeline):
                             latent_refine = latent_refine + (latent_model_input - latent_refine_orig) * lr 
 
             return latent 
+
+
+    @torch.no_grad() 
+    def prompt_generate(
+        self,
+        prompt_ids,
+        prompt_edit_ids=None, 
+        prompt_edit_token_weights=[], 
+        prompt_edit_tokens_start=0.0, 
+        prompt_edit_tokens_end=1.0, 
+        prompt_edit_spatial_start=0.0, 
+        prompt_edit_spatial_end=1.0, 
+        guidance_scale=7.5, 
+        steps=50, 
+        generator=None, 
+        width=512, 
+        height=512, 
+        init_image=None, 
+    ):
+
+        #Set inference timesteps to scheduler
+        scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
+        scheduler.set_timesteps(steps) 
+
+        init_latent = torch.zeros((1, self.unet.in_channels, height // 8, width // 8), device=self.device) 
+        t_start = 0
+
+        # Generate random normal noise
+        noise = torch.randn(init_latent.shape, generator=generator, device=self.device)
+
+
+        if init_image is not None: 
+            noise = init_image
+
+        init_latents = noise
+        # latent = noise * scheduler.init_noise_sigma
+        latent = scheduler.add_noise(init_latent, noise, torch.tensor([scheduler.timesteps[t_start]], device=self.device)).to(self.device)
+
+        # Process clip
+        with autocast('cuda'):
+            tokens_unconditional = self.tokenizer("", padding="max_length", max_length=self.tokenizer.model_max_length, truncation=True, return_tensors="pt", return_overflowing_tokens=True)
+            embedding_unconditional = self.text_encoder(tokens_unconditional.input_ids.to(self.device)).last_hidden_state
+
+            tokens_conditional = self.tokenizer(prompt_ids, padding="max_length", max_length=self.tokenizer.model_max_length, truncation=True, return_tensors="pt", return_overflowing_tokens=True)
+            embedding_conditional = self.text_encoder(tokens_conditional.input_ids.to(self.device)).last_hidden_state
+
+            # Process prompt editing
+            if prompt_edit_ids is not None:
+                tokens_conditional_edit = self.tokenizer(prompt_edit_ids, padding="max_length", max_length=self.tokenizer.model_max_length, truncation=True, return_tensors="pt", return_overflowing_tokens=True)
+                embedding_conditional_edit = self.text_encoder(tokens_conditional_edit.input_ids.to(self.device)).last_hidden_state
+                
+                # Set attention map for difference part 
+                init_attention_edit(tokens_conditional, tokens_conditional_edit, self.tokenizer, self.unet, self.device)
+                
+            init_attention_func(unet=self.unet)
+            init_attention_weights(prompt_edit_token_weights, self.tokenizer, self.unet, self.device)
+                
+            timesteps = scheduler.timesteps[t_start:]
+            
+            for i, t in tqdm(enumerate(timesteps), total=len(timesteps)):
+                t_index = t_start + i
+
+                #sigma = scheduler.sigmas[t_index]
+                latent_model_input = latent
+                latent_model_input = scheduler.scale_model_input(latent_model_input, t)
+
+                #Predict the unconditional noise residual
+                noise_pred_uncond = self.unet(latent_model_input, t, encoder_hidden_states=embedding_unconditional).sample
+                
+                #Prepare the Cross-Attention layers
+                if prompt_edit_ids is not None:
+                    save_last_tokens_attention(self.unet)
+                    save_last_self_attention(self.unet)
+                else:
+                    #Use weights on non-edited prompt when edit is None
+                    use_last_tokens_attention_weights(self.unet)
+                    
+                #Predict the conditional noise residual and save the cross-attention layer activations
+                noise_pred_cond = self.unet(latent_model_input, t, encoder_hidden_states=embedding_conditional).sample
+                
+                #Edit the Cross-Attention layer activations
+                if prompt_edit_ids is not None:
+                    t_scale = t / scheduler.num_train_timesteps
+                    if t_scale >= prompt_edit_tokens_start and t_scale <= prompt_edit_tokens_end:
+                        use_last_tokens_attention(self.unet)
+                    if t_scale >= prompt_edit_spatial_start and t_scale <= prompt_edit_spatial_end:
+                        use_last_self_attention(self.unet)
+                        
+                    #Use weights on edited prompt
+                    use_last_tokens_attention_weights(self.unet)
+
+                    #Predict the edited conditional noise residual using the cross-attention masks
+                    noise_pred_cond = self.unet(latent_model_input, t, encoder_hidden_states=embedding_conditional_edit).sample
+                    
+                #Perform guidance
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
+
+                latent = scheduler.step(noise_pred, t_index, latent).prev_sample
+
+            #scale and decode the image latents with vae
+            latent =  1 / 0.18215 * latent
+            image = self.vae.decode(latent.to(self.vae.dtype)).sample
+
+
+        image = (image / 2 + 0.5).clamp(0, 1)
+
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+        image = self.numpy_to_pil(image)
+
+        return image
+
