@@ -9,7 +9,7 @@ We address the consistency image editing by inversing both image and text embedd
 ## 1. Model Structure 
 
 <p align="center">
-     <img src="figures/framework.png" alt="Stable edit">
+     <img src="figures/framework.png" alt="Stable edit framework">
      <br/>
      <sub><em>
      Overview of the proposed stable editing framework.
@@ -19,7 +19,7 @@ We address the consistency image editing by inversing both image and text embedd
 ## 2. Cases
 
 <p align="center">
-     <img src="figures/case.png" alt="Stable edit">
+     <img src="figures/case.png" alt="Edited cases">
      <br/>
      <sub><em>
      Cases for the image editing.
