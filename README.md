@@ -1,7 +1,31 @@
 # Stable-Edit 
 
-Text-based real image editing with stable diffusion models.
+This is the PyTorch implementation for image editing framework as described in: 
 
-Inversed both image and text embedding for consistency image editing.
+> **Stable-Edit: Text-based real image editing with stable diffusion models**
+
+We address the consistency image editing by inversing both image and text embedding.
+
+## 1. Model Structure 
+
+<p align="center">
+     <img src="figures/framework.pdf" alt="Stable edit">
+     <br/>
+     <sub><em>
+     Overview of the proposed stable editing framework.
+    </em></sub>
+</p>
+
+## 2. Cases
+
+<p align="center">
+     <img src="figures/case.pdf" alt="Stable edit">
+     <br/>
+     <sub><em>
+     Cases for the image editing.
+    </em></sub>
+</p>
+
+
 
 This repository is based on [diffusers](https://github.com/huggingface/diffusers).
