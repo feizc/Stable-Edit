@@ -4,7 +4,7 @@ This is the PyTorch implementation for image editing framework as described in:
 
 > **Stable-Edit: Text-based real image editing with stable diffusion models**
 
-We address the consistency image editing by inversing both image and text embedding.
+We address the consistency image editing by inversing both image and text embedding. Specifically, provide with the input image $X$ and text $Y$, we first learn the text embedding $e_{opt}$ of image $X$.
 
 ## 1. Model Structure 
 
