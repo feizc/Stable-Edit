@@ -22,8 +22,10 @@ Specifically, provide with the input image $X$ and target text $Y$, we first lea
 
 ## 2. Cases
 
+Some cases edited by stable edit. 
+
 <p align="center">
-     <img src="figures/case.png" alt="Edited cases">
+     <img src="figures/case.png" alt="Edited cases" width = "600">
      <br/>
      <sub><em>
      Cases for the image editing.
@@ -31,5 +33,8 @@ Specifically, provide with the input image $X$ and target text $Y$, we first lea
 </p>
 
 
+## 3. Acknowledge
 
-This repository is based on [diffusers](https://github.com/huggingface/diffusers).
+This repository is based on [diffusers](https://github.com/huggingface/diffusers). Thanks for their clear code. 
+
+
