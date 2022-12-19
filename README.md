@@ -22,10 +22,10 @@ Specifically, provide with the input image $X$ and target text $Y$, we first lea
 
 ## 2. Cases
 
-Some cases edited by stable edit. 
+Some cases edited by stable edit and stable diffusion model. 
 
 <p align="center">
-     <img src="figures/case.png" alt="Edited cases" width = "600">
+     <img src="figures/case.png" alt="Edited cases" width = "800">
      <br/>
      <sub><em>
      Cases for the image editing.
