@@ -25,7 +25,7 @@ Specifically, provide with the input image $X$ and target text $Y$, we first lea
 Some cases edited by stable edit and stable diffusion model. 
 
 <p align="center">
-     <img src="figures/case.png" alt="Edited cases" width = "800">
+     <img src="figures/case.png" alt="Edited cases" width = "600">
      <br/>
      <sub><em>
      Cases for the image editing.
